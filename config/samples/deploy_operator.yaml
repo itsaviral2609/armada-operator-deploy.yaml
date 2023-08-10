@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: armada-operator
-          image: gresearch/armada-operator:latest
+          image: gresearch/armada-operator:0.0.13
 
 ---
 
