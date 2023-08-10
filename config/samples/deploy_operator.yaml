@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: armada-operator
+  namespace: armada
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: armada-operator
+  template:
+    metadata:
+      labels:
+        app: armada-operator
+    spec:
+      containers:
+        - name: armada-operator
+          image: gresearch/armada-operator:latest
