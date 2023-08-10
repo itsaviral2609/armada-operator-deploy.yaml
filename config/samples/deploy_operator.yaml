@@ -16,3 +16,41 @@ spec:
       containers:
         - name: armada-operator
           image: gresearch/armada-operator:latest
+
+---
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: armada-operator
+  namespace: armada
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: armada-operator-role
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+    resourceNames: ["armada-operator"]
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: armada-operator-binding
+subjects:
+  - kind: ServiceAccount
+    name: armada-operator
+    namespace: armada
+roleRef:
+  kind: ClusterRole
+  name: armada-operator-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+
