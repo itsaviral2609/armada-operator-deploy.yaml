@@ -1,4 +1,550 @@
 apiVersion: install.armadaproject.io/v1alpha1
+kind: ArmadaServer
+metadata:
+  name: armadaserver-sample
+  namespace: armada
+spec:
+  pulsarInit: false
+  ingress:
+    ingressClass: "nginx"
+  clusterIssuer: "k8s-cluster-issuer"
+  hostNames: [localhost-server]
+  replicas: 1
+  image:
+    repository: gresearch/armada-server
+    tag: b292be39d6f960fcf20a8de26657ce79019abef5
+  applicationConfig:
+    server: localhost:50051
+    forceNoTls: true
+    toleratedTaints:
+      - key: armada.io/batch
+        operator: in
+    auth:
+      anonymousAuth: true
+      basicAuth:
+        enableAuthentication: false
+      permissionGroupMapping:
+        submit_jobs: ["everyone"]
+        submit_any_jobs: ["everyone"]
+        create_queue: ["everyone"]
+        delete_queue: ["everyone"]
+        cancel_jobs: ["everyone"]
+        cancel_any_jobs: ["everyone"]
+        reprioritize_jobs: ["everyone"]
+        reprioritize_any_jobs: ["everyone"]
+        watch_events: ["everyone"]
+        watch_all_events: ["everyone"]
+        execute_jobs: ["everyone"]      
+    postgres:
+      connection:
+        host: postgresql.armada.svc.cluster.local
+        port: 5432
+        user: postgres
+        password: psw
+        dbname: postgres
+        sslmode: disable
+    pulsar:
+      URL: pulsar://pulsar-broker.armada.svc.cluster.local:6650
+    redis:
+      addrs:
+        - redis-master.armada.svc.cluster.local:6379
+      db: 0
+      poolSize: 1000
+    scheduling:
+      queueLeaseBatchSize: 1000
+      maximalResourceFractionToSchedulePerQueue:
+        memory: 0.99
+        cpu: 0.99
+      maximalResourceFractionPerQueue:
+        memory: 0.99
+        cpu: 0.99
+      maximalClusterFractionToSchedule:
+        memory: 0.99
+        cpu: 0.99
+      probabilityOfUsingNewScheduler: 1
+      preemption:
+        enabled: true
+        priorityClasses:
+          armada-default:
+            priority: 1000
+            maximalResourceFractionPerQueue:
+              memory: 0.99
+              cpu: 0.99
+          "": # Treat missing PC the same as armada-default.
+            priority: 1000
+            maximalResourceFractionPerQueue:
+              memory: 0.99
+              cpu: 0.99
+          armada-preemptible:
+            priority: 900
+            maximalResourceFractionPerQueue:
+              memory: 0.99
+              cpu: 0.99
+        # Default to empty PC to not require PCs be set up in worker clusters.
+        defaultPriorityClass: ""
+      maxQueueReportsToStore: 1000
+      MaxJobReportsToStore: 100000
+      defaultJobLimits:
+        cpu: 1
+        memory: 1Gi
+        ephemeral-storage: 8Gi
+      defaultJobTolerations:
+        - key: "example.com/default_toleration"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+      minTerminationGracePeriod: 1s
+      maxTerminationGracePeriod: 30s
+---
+apiVersion: install.armadaproject.io/v1alpha1
+kind: EventIngester
+metadata:
+  name: eventingester-sample
+  namespace: armada
+spec:
+  replicas: 1
+  image:
+    repository: gresearch/armada-event-ingester
+    tag: b292be39d6f960fcf20a8de26657ce79019abef5
+  applicationConfig:
+    redis:
+      addrs:
+        - redis-master.armada.svc.cluster.local:6379
+      password: ""
+      db: 0
+      poolSize: 1000
+    pulsar:
+      URL: pulsar://pulsar-broker.armada.svc.cluster.local:6650
+      jobsetEventsTopic: events
+      receiveTimeout: 5s
+      backoffTime: 1s
+    subscriptionName: "events-ingester"
+    minMessageCompressionSize: 1024
+    batchSize: 1048576  #1MB
+    batchDuration: 500ms
+    batchMessages: 10000
+    eventRetentionPolicy:
+      expiryEnabled: true
+      retentionDuration: 336h
+---
+apiVersion: install.armadaproject.io/v1alpha1
+kind: Lookout
+metadata:
+  name: lookout-sample
+  namespace: armada
+spec:
+  ingress:
+    ingressClass: "nginx"
+    labels:
+      hello: "world"
+    annotations:
+      hello: "world2"
+  clusterIssuer: "k8s-cluster-issuer"
+  hostNames: [localhost-lookout]
+  replicas: 2
+  image:
+    repository: gresearch/armada-lookout
+    tag: b292be39d6f960fcf20a8de26657ce79019abef5
+  resources:
+    limits:
+      memory: 1Gi
+      cpu: "0.5"
+    requests:
+      memory: 500Mi
+      cpu: "0.3"
+
+  environment:
+  - name: LOG_FORMAT
+    value: json
+
+  prometheus:
+    enabled: false
+    labels:
+      metrics: "true"
+      prometheus: armada
+      role: prometheus-rulefiles
+
+  applicationConfig:
+    # See https://github.com/armadaproject/armada/blob/master/config/lookout/config.yaml
+    # for the full list of configuration options.
+    # See https://github.com/armadaproject/armada/blob/master/config/lookout/config.yaml
+    # for the full list of configuration options.
+    grpcPort: 50059
+    httpPort: 8080
+    metricsPort: 9000
+    grpc:
+      keepaliveParams:
+        maxConnectionIdle: 5m
+        time: 2h
+        timeout: 20s
+      keepaliveEnforcementPolicy:
+        minTime: 5m
+        permitWithoutStream: false
+    uiConfig:
+      armadaApiBaseUrl: "http://localhost:8080"
+      userAnnotationPrefix: "armadaproject.io/"
+      binocularsEnabled: true
+      binocularsBaseUrlPattern: "http://localhost:8082"
+      overviewAutoRefreshMs: 15000
+      jobSetsAutoRefreshMs: 15000
+      jobsAutoRefreshMs: 30000
+      lookoutV2ApiBaseUrl: "http://localhost:10000"
+    postgres:
+      maxOpenConns: 100
+      maxIdleConns: 25
+      connMaxLifetime: 30m
+      connection:
+        host: postgresql.armada.svc.cluster.local
+        port: 5432
+        user: postgres
+        password: psw
+        dbname: lookout
+        sslmode: disable
+---
+apiVersion: install.armadaproject.io/v1alpha1
+kind: LookoutIngester
+metadata:
+  namespace: armada
+  name: lookoutingester-sample
+spec:
+  image:
+    repository: gresearch/armada-lookout-ingester
+    tag: b292be39d6f960fcf20a8de26657ce79019abef5
+  applicationConfig:
+    postgres:
+      maxOpenConns: 100
+      maxIdleConns: 25
+      connMaxLifetime: 30m
+      connection:
+        host: postgresql.armada.svc.cluster.local
+        port: 5432
+        user: postgres
+        password: psw
+        dbname: lookout
+        sslmode: disable
+    metrics:
+      port: 9000
+    pulsar:
+      enabled: true
+      URL: "pulsar://pulsar-broker.armada.svc.cluster.local:6650"
+      jobsetEventsTopic: "events"
+      receiveTimeout: 5s
+      backoffTime: 1s
+    paralellism: 1
+    subscriptionName: "lookout-ingester"
+    batchSize: 10000
+    batchDuration: 500ms
+    minJobSpecCompressionSize: 1024
+    userAnnotationPrefix: "armadaproject.io/"
+---
+apiVersion: install.armadaproject.io/v1alpha1
+kind: Lookout
+metadata:
+  name: lookoutv2-sample
+  namespace: armada
+spec:
+  ingress:
+    ingressClass: "nginx"
+    labels:
+      hello: "world"
+    annotations:
+      hello: "world2"
+  clusterIssuer: "k8s-cluster-issuer"
+  hostNames: [localhost-lookoutv2]
+  replicas: 2
+  image:
+    repository: gresearch/armada-lookout-v2
+    tag: 2a9b6e8cef1c0a1851ec34d0808a3ecfdcc9c926
+  resources:
+    limits:
+      memory: 1Gi
+      cpu: "0.5"
+    requests:
+      memory: 500Mi
+      cpu: "0.3"
+
+  environment:
+  - name: LOG_FORMAT
+    value: json
+
+  prometheus:
+    enabled: false
+    labels:
+      metrics: "true"
+      prometheus: armada
+      role: prometheus-rulefiles
+
+  applicationConfig:
+    # See https://github.com/armadaproject/armada/blob/master/config/lookoutv2/config.yaml
+    # for the full list of configuration options.
+    apiPort: 8080
+    corsAllowedOrigins:
+      - "http://localhost:3000"
+      - "http://localhost:8089"
+    postgres:
+      maxOpenConns: 100
+      maxIdleConns: 25
+      connMaxLifetime: 30m
+      connection:
+        host: postgresql.armada.svc.cluster.local
+        port: 5432
+        user: postgres
+        password: psw
+        dbname: lookoutv2
+        sslmode: disable
+    prunerConfig:
+      daysToKeep: 42
+      batchSize: 1000
+---
+apiVersion: install.armadaproject.io/v1alpha1
+kind: LookoutIngester
+metadata:
+  namespace: armada
+  name: lookoutingesterv2-sample
+spec:
+  image:
+    repository: gresearch/armada-lookout-ingester-v2
+    tag: 2a9b6e8cef1c0a1851ec34d0808a3ecfdcc9c926
+  applicationConfig:
+    postgres:
+      maxOpenConns: 100
+      maxIdleConns: 25
+      connMaxLifetime: 30m
+      connection:
+        host: postgresql.armada.svc.cluster.local
+        port: 5432
+        user: postgres
+        password: psw
+        dbname: lookoutv2
+        sslmode: disable
+    metrics:
+      port: 9000
+    pulsar:
+      enabled: true
+      URL: "pulsar://pulsar-broker.armada.svc.cluster.local:6650"
+      jobsetEventsTopic: "events"
+      receiveTimeout: 5s
+      backoffTime: 1s
+    paralellism: 1
+    subscriptionName: "lookout-ingester-v2"
+    batchSize: 10000
+    batchDuration: 500ms
+    minJobSpecCompressionSize: 1024
+    userAnnotationPrefix: "armadaproject.io/"
+---
+apiVersion: install.armadaproject.io/v1alpha1
+kind: SchedulerIngester
+metadata:
+  labels:
+    app.kubernetes.io/name: scheduleringester
+    app.kubernetes.io/instance: scheduleringester-sample
+    app.kubernetes.io/part-of: armada-operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: armada-operator
+  name: scheduleringester-sample
+  namespace: armada
+spec:
+  replicas: 1
+  image:
+    repository: gresearch/armada-scheduler-ingester
+    tag: "70a27e91003a32b90cfb8d8bfd736c65556daae9"
+  applicationConfig:
+    postgres:
+      maxOpenConns: 100
+      maxIdleConns: 25
+      connMaxLifetime: 30m
+      connection:
+        host: postgresql.armada.svc.cluster.local
+        port: 5432
+        user: postgres
+        password: psw
+        dbname: postgres
+        sslmode: disable
+    metrics:
+      port: 9000
+    pulsar:
+      enabled: true
+      URL: "pulsar://pulsar-broker.armada.svc.cluster.local:6650"
+      jobsetEventsTopic: "events"
+      receiveTimeout: 5s
+      backoffTime: 1s
+    paralellism: 1
+    subscriptionName: "scheduler-ingester"
+    batchSize: 10000
+    batchDuration: 500ms
+    minJobSpecCompressionSize: 1024
+    userAnnotationPrefix: "armadaproject.io/"
+---
+apiVersion: install.armadaproject.io/v1alpha1
+kind: Scheduler
+metadata:
+  labels:
+    app.kubernetes.io/name: scheduler
+    app.kubernetes.io/instance: scheduler-sample
+    app.kubernetes.io/part-of: armada-operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: armada-operator
+  name: scheduler-sample
+  namespace: armada
+spec:
+  pruner:
+    enabled: true
+    schedule: "@hourly"
+    resources:
+      limits:
+        memory: 1Gi
+        cpu: 300m
+    args:
+      timeout: 5m
+      batchsize: 1000
+      expireAfter: 2h
+  ingress:
+    ingressClass: "nginx"
+    labels:
+      hello: "world"
+    annotations:
+      hello: "world2"
+  clusterIssuer: "k8s-cluster-issuer"
+  hostNames: [localhost]
+  replicas: 2
+  image:
+    repository: gresearchdev/armada-scheduler
+    tag: v0.3.47
+  resources:
+    limits:
+      memory: 1Gi
+      cpu: "0.5"
+    requests:
+      memory: 500Mi
+      cpu: "0.3"
+
+  environment:
+  - name: LOG_FORMAT
+    value: json
+
+  prometheus:
+    enabled: false
+    labels:
+      metrics: "true"
+      prometheus: armada
+      role: prometheus-rulefiles
+
+  applicationConfig:
+    # See https://github.com/armadaproject/armada/blob/master/config/scheduler/config.yaml
+    # for the full list of configuration options.
+    cyclePeriod: 10s
+    executorTimeout: 1h
+    databaseFetchSize: 1000
+    pulsarSendTimeout: 5s
+    internedStringsCacheSize: 100000
+    auth:
+      anonymousAuth: true
+    metrics:
+      port: 9000
+      refreshInterval: 30s
+    pulsar:
+      URL: "pulsar://pulsar-broker.armada.svc.cluster.local:6650"
+      jobsetEventsTopic: "events"
+      receiveTimeout: 5s
+      backoffTime: 1s
+    postgres:
+      maxOpenConns: 100
+      maxIdleConns: 100
+      connMaxLifetime: "30m"
+      connection:
+        host: postgresql.armada.svc.cluster.local
+        port: 5432
+        user: postgres
+        password: psw
+        dbname: scheduler
+        sslmode: disable
+    leader:
+      mode: standalone
+      leaseLockName: armada-scheduler
+      LeaseLockNamespace: "" # This must be set so viper allows env vars to overwrite it
+      leaseDuration: 15s
+      renewDeadline: 10s
+      retryPeriod: 2s
+      podName: "" # This must be set so viper allows env vars to overwrite it
+    grpc:
+      port: 50052
+      keepaliveParams:
+        maxConnectionIdle: 5m
+        time: 120s
+        timeout: 20s
+      keepaliveEnforcementPolicy:
+        minTime: 10s
+        permitWithoutStream: true
+    scheduling:
+      executorTimeout: 10m
+      nodeIdLabel: kubernetes.io/hostname
+      preemption:
+        enabled: true
+        priorityClasses:
+          armada-default:
+            priority: 1000
+            maximalResourceFractionPerQueue:
+              memory: 0.99
+              cpu: 0.99
+          armada-preemptible:
+            priority: 900
+            maximalResourceFractionPerQueue:
+              memory: 0.99
+              cpu: 0.99
+        defaultPriorityClass: armada-default
+      queueLeaseBatchSize: 1000
+      minimumResourceToSchedule:
+        memory: 1000000 # 1Mb
+        cpu: 0.1
+      maximalResourceFractionToSchedulePerQueue:
+        memory: 1.0
+        cpu: 1.0
+      maximalResourceFractionPerQueue:
+        memory: 1.0
+        cpu: 1.0
+      maximalClusterFractionToSchedule:
+        memory: 1.0
+        cpu: 1.0
+      maximumJobsToSchedule: 5000
+      maxUnacknowledgedJobsPerExecutor: 2500
+      maxQueueReportsToStore: 1000
+      MaxJobReportsToStore: 10000
+      defaultJobLimits:
+        cpu: 1
+        memory: 1Gi
+        ephemeral-storage: 8Gi
+      defaultJobTolerations:
+        - key: "armadaproject.io/armada"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+      defaultJobTolerationsByPriorityClass:
+        "":
+          - key: "armadaproject.io/pc-armada-default"
+            operator: "Equal"
+            value: "true"
+            effect: "NoSchedule"
+        armada-default:
+          - key: "armadaproject.io/pc-armada-default"
+            operator: "Equal"
+            value: "true"
+            effect: "NoSchedule"
+        armada-preemptible:
+          - key: "armadaproject.io/pc-armada-preemptible"
+            operator: "Equal"
+            value: "true"
+            effect: "NoSchedule"
+      maxRetries: 5
+      resourceScarcity:
+        cpu: 1.0
+      indexedResources:
+        - cpu
+        - memory
+      gangIdAnnotation: armadaproject.io/gangId
+      gangCardinalityAnnotation: armadaproject.io/gangCardinality
+
+---
+apiVersion: install.armadaproject.io/v1alpha1
 kind: ServiceAccount
 metadata:
   name: armada-operator-sa
